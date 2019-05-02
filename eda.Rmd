@@ -26,5 +26,34 @@ library(knitr)
 kable(df)
 
 
-summary(heart)
+### create table of summary of explanatory variables
+dead <- heart[heart$Status == 'Dead',]
+alive <- heart[heart$Status == 'Alive',]
+
+create_row <- function(df){
+sum_vec <- c(round(mean(df$Sex == 'Female'),2), 
+             paste(round(mean(df$AgeAtStart, na.rm = T),2), ' (', round(sd(df$AgeAtStart, na.rm = T),2), ')', sep = ''),
+             paste(round(mean(df$Height, na.rm = T),2), ' (', round(sd(df$Height, na.rm = T),2), ')', sep = ''),
+             paste(round(mean(df$Weight, na.rm = T),2), ' (', round(sd(df$Weight, na.rm = T),2), ')', sep = ''),
+             paste(round(mean(df$Diastolic, na.rm = T),2), ' (', round(sd(df$Diastolic, na.rm = T),2), ')', sep = ''),
+             paste(round(mean(df$Systolic, na.rm = T),2), ' (', round(sd(df$Systolic, na.rm = T),2), ')', sep = ''),
+             paste(round(mean(df$Cholesterol, na.rm = T),2), ' (', round(sd(df$Cholesterol, na.rm = T),2), ')', sep = ''),
+             1-round(mean(df$Smoking_Status == 'Non-smoker'),2))
+return(sum_vec)
+}
+head(heart)
+
+Total <- create_row(heart)
+Alive <- create_row(alive)
+Dead  <- create_row(dead)
+
+
+df_tab <- data.frame(Total, Alive, Dead)
+row.names(df_tab) <- c('% Female', 'Mean Age at Start (SD)',
+                       'Mean Height (SD)', 'Mean Weight (SD)',
+                       'Mean Diastolic (SD)', 'Mean Systolic (SD)',
+                       'Mean Cholesterol (SD)', '% Smoker')
+
+kable(df_tab)
+
 ```
