@@ -41,7 +41,7 @@ sum_vec <- c(round(mean(df$Sex == 'Female'),2),
              1-round(mean(df$Smoking_Status == 'Non-smoker'),2))
 return(sum_vec)
 }
-head(heart)
+summary(heart)
 
 Total <- create_row(heart)
 Alive <- create_row(alive)
@@ -56,4 +56,17 @@ row.names(df_tab) <- c('% Female', 'Mean Age at Start (SD)',
 
 kable(df_tab)
 
+```
+
+
+Fit the models
+
+```{r}
+head(heart)
+
+
+mod1 <- glm(factor(Status) ~ factor(Sex) + AgeAtStart + Height + Weight + Diastolic + Systolic + Cholesterol + factor(BP_Status) + factor(Smoking_Status), 
+            data = heart)
+
+summary(mod1)
 ```
