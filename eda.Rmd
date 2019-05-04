@@ -6,6 +6,11 @@ output: html_document
 ```{r}
 #### read in data ####
 heart <- read.csv('Framingham Heart Data.csv')
+summary(heart)
+## remove na data
+heart <- heart[!(is.na(heart$Height) | is.na(heart$Weight) | is.na(heart$Smoking) | is.na(heart$Cholesterol)),]
+
+
 #### format columns (type I censoring) ####
 heart$d <- heart$AgeAtDeath - heart$AgeAtStart
 heart$c <- ifelse(heart$Status == 'Alive', 0, 1)
@@ -26,33 +31,51 @@ library(knitr)
 kable(df)
 
 
-### create table of summary of explanatory variables
-dead <- heart[heart$Status == 'Dead',]
-alive <- heart[heart$Status == 'Alive',]
+### variable formatting
+summary(heart)
+heart$BP_level <- ifelse(heart$Systolic <= 129 & heart$Diastolic <= 80, 'Normal', 'High')
+heart$Chol_Level <- ifelse(heart$Cholesterol <= 239, 'Normal', 'High')
+heart$Smoke_Binary <- ifelse(heart$Smoking == 'Non-smoker', 'No', 'Yes')
+heart$opt_weight <- (heart$Weight / heart$MRW..Metropolitan.Relative.desired..Weight.) - 1
+heart$DeathType <- ifelse(heart$Status == 'Alive', 'Alive',
+                          ifelse(heart$DeathCause %in% c('Cerebral Vascular Disease', 'Coronary Heart Disease'), 'Heart_Disease', 'Other'))
+s_heart <- split(heart, heart$DeathType)
 
+
+
+### create table of summary of explanatory variables
 create_row <- function(df){
 sum_vec <- c(round(mean(df$Sex == 'Female'),2), 
              paste(round(mean(df$AgeAtStart, na.rm = T),2), ' (', round(sd(df$AgeAtStart, na.rm = T),2), ')', sep = ''),
              paste(round(mean(df$Height, na.rm = T),2), ' (', round(sd(df$Height, na.rm = T),2), ')', sep = ''),
              paste(round(mean(df$Weight, na.rm = T),2), ' (', round(sd(df$Weight, na.rm = T),2), ')', sep = ''),
+             paste(round(mean(df$opt_weight, na.rm = T),2), ' (', round(sd(df$opt_weight, na.rm = T),2), ')', sep = ''),
              paste(round(mean(df$Diastolic, na.rm = T),2), ' (', round(sd(df$Diastolic, na.rm = T),2), ')', sep = ''),
              paste(round(mean(df$Systolic, na.rm = T),2), ' (', round(sd(df$Systolic, na.rm = T),2), ')', sep = ''),
+             round(mean(df$BP_level == 'High', na.rm = T), 2),
              paste(round(mean(df$Cholesterol, na.rm = T),2), ' (', round(sd(df$Cholesterol, na.rm = T),2), ')', sep = ''),
+             round(mean(df$Chol_Level == 'High', na.rm = T), 2),
              1-round(mean(df$Smoking_Status == 'Non-smoker'),2))
 return(sum_vec)
 }
-summary(heart)
+table(heart$DeathType, factor(heart$Chol_Level))
+summary(factor(s_heart$Alive$Chol_Level))
 
 Total <- create_row(heart)
-Alive <- create_row(alive)
-Dead  <- create_row(dead)
+Alive <- create_row(s_heart$Alive)
+Dead_h  <- create_row(s_heart$Heart_Disease)
+Dead_o  <- create_row(s_heart$Other)
 
-
-df_tab <- data.frame(Total, Alive, Dead)
+df_tab <- data.frame(Total, Alive, Dead_h, Dead_o)
+colnames(df_tab) <- c('Total' ,'Alive', 'Death (heart disease)', 'Death (other)')
 row.names(df_tab) <- c('% Female', 'Mean Age at Start (SD)',
                        'Mean Height (SD)', 'Mean Weight (SD)',
+                       'Mean % from desired weight (SD)',
                        'Mean Diastolic (SD)', 'Mean Systolic (SD)',
-                       'Mean Cholesterol (SD)', '% Smoker')
+                       '% High Blood Pressure',
+                       'Mean Cholesterol (SD)', 
+                       '% High Cholesterol',
+                       '% Smoker')
 
 kable(df_tab)
 
@@ -63,9 +86,16 @@ Fit the models
 
 ```{r}
 head(heart)
+library(VGAM)
 
+mm <- data.frame(model.matrix(~ factor(DeathType) + 0, heart))
+h2 <- cbind(heart, mm)
+names(h2)
+cols <- cbind(h2$factor.DeathType.Alive, h2$factor.DeathType.Heart_Disease, h2$factor.DeathType.Other)
 
-mod1 <- glm(factor(Status) ~ factor(Sex) + AgeAtStart + Height + Weight + Diastolic + Systolic + Cholesterol + factor(BP_Status) + factor(Smoking_Status), 
+## test model
+mod1 <- vglm(cols ~ factor(Sex) + AgeAtStart + Height + Weight + Diastolic + Systolic + Cholesterol + factor(BP_Status) + factor(Smoking_Status),
+             family = multinomial,
             data = heart)
 
 summary(mod1)
