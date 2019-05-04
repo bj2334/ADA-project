@@ -30,15 +30,15 @@ library(knitr)
 ### survival summary table
 kable(df)
 
-
+table(heart$Smoking_Status)
 ### variable formatting
 summary(heart)
 heart$BP_level <- ifelse(heart$Systolic <= 129 & heart$Diastolic <= 80, 'Normal', 'High')
 heart$Chol_Level <- ifelse(heart$Cholesterol <= 239, 'Normal', 'High')
-heart$Smoke_Binary <- ifelse(heart$Smoking == 'Non-smoker', 'No', 'Yes')
+heart$Smoke_Binary <- ifelse(heart$Smoking_Status == 'Non-smoker', 'No', 'Yes')
 heart$opt_weight <- (heart$Weight / heart$MRW..Metropolitan.Relative.desired..Weight.) - 1
 heart$DeathType <- ifelse(heart$Status == 'Alive', 'Alive',
-                          ifelse(heart$DeathCause %in% c('Cerebral Vascular Disease', 'Coronary Heart Disease'), 'Heart_Disease', 'Other'))
+                          ifelse(heart$DeathCause %in% c('Coronary Heart Disease'), 'Heart_Disease', 'Other'))
 s_heart <- split(heart, heart$DeathType)
 
 
@@ -91,12 +91,61 @@ library(VGAM)
 mm <- data.frame(model.matrix(~ factor(DeathType) + 0, heart))
 h2 <- cbind(heart, mm)
 names(h2)
-cols <- cbind(h2$factor.DeathType.Alive, h2$factor.DeathType.Heart_Disease, h2$factor.DeathType.Other)
+cols <- cbind(h2$factor.DeathType.Heart_Disease, h2$factor.DeathType.Other, h2$factor.DeathType.Alive)
 
 ## test model
-mod1 <- vglm(cols ~ factor(Sex) + AgeAtStart + Height + Weight + Diastolic + Systolic + Cholesterol + factor(BP_Status) + factor(Smoking_Status),
+mod1 <- vglm(cols ~ factor(Sex) + AgeAtStart + opt_weight + factor(BP_level) + factor(Chol_Level) + factor(Smoke_Binary),
              family = multinomial,
             data = heart)
 
 summary(mod1)
+
+mod2 <- vglm(cols ~ factor(Sex) + AgeAtStart + factor(BP_level) + factor(Chol_Level) + factor(Smoke_Binary),
+             family = multinomial,
+            data = heart)
+
+summary(mod2)
+
+## create plot of coefficients
+bs <- coef(mod2)
+ses <- sqrt(diag(vcov(mod2)))
+ul <- bs + 1.96*ses
+ll <- bs - 1.96*ses
+cbind(ll, ul)
+length(bs)
+
+plot(1:length(bs),exp(bs), pch=20, ylim=c(0,3), xlim=c(3.5,12.5),
+     xlab='Factor',
+     ylab='Exp(Coefficient)',
+     xaxt='n',
+     main='Exponentiated Model coefficients with 95% CI',
+     col = 'black',
+     cex = 2)
+
+segments(y1=exp(ul),y0=exp(ll),x0=1:length(bs), lwd = 3, col = 'black')
+abline(h=1, lty=2)
+c_name <- c('Intercept 1', 'Intercept 2', 'Sex = M:1', 'Sex = M:2', 'Age at start:1', 'Age at start:2',
+            'BP = Normal:1', 'BP = Normal:2', 'Chol = Normal:1', 'Chol = Normal:2' ,
+            'Smoke = Yes:1', 'Smoke = Yes:2')
+axis(1, at = 1:length(bs), labels = c_name, srt = 45)
+
+lines((mod.vis$coefficients[2:7]), pch=20,
+     
+     col='dark gray',
+     type='p')
+
+segments(y1=ul3,y0=ll4,x0=1:6, lwd = 2, col = 'dark gray')
+
+## check ok to remove weight with LRT test
+anova(mod2, mod1, test = 'LRT', type = 1)
+
+### check for interactions between weight and other variables
+boxplot(heart$opt_weight ~ heart$BP_level)
+boxplot(heart$opt_weight ~ heart$Chol_Level)
+boxplot(heart$opt_weight ~ heart$DeathType)
+
+
+### check interaction model
+
+
 ```
