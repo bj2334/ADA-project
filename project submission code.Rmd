@@ -1,0 +1,182 @@
+---
+title: "eda"
+output: html_document
+---
+
+```{r}
+#### read in data ####
+heart <- read.csv('Framingham Heart Data.csv')
+summary(heart)
+## remove na data
+heart <- heart[!(is.na(heart$Height) | is.na(heart$Weight) | is.na(heart$Smoking) | is.na(heart$Cholesterol)),]
+
+
+### variable formatting
+summary(heart)
+heart$BP_level <- ifelse(heart$Systolic <= 129 & heart$Diastolic <= 80, 'Normal', 'High')
+heart$Chol_Level <- ifelse(heart$Cholesterol <= 239, 'Normal', 'High')
+heart$Smoke_Binary <- ifelse(heart$Smoking_Status == 'Non-smoker', 'No', 'Yes')
+heart$opt_weight <- (heart$Weight / heart$MRW..Metropolitan.Relative.desired..Weight.) - 1
+heart$DeathType <- ifelse(heart$Status == 'Alive', 'Alive',
+                          ifelse(heart$DeathCause %in% c('Coronary Heart Disease'), 'Heart_Disease', 'Other'))
+s_heart <- split(heart, heart$DeathType)
+
+
+
+### create table of summary of explanatory variables
+create_row <- function(df){
+sum_vec <- c(nrow(df),
+              round(mean(df$Sex == 'Female'),2), 
+             paste(round(mean(df$AgeAtStart, na.rm = T),2), ' (', round(sd(df$AgeAtStart, na.rm = T),2), ')', sep = ''),
+             paste(round(mean(df$Height, na.rm = T),2), ' (', round(sd(df$Height, na.rm = T),2), ')', sep = ''),
+             paste(round(mean(df$Weight, na.rm = T),2), ' (', round(sd(df$Weight, na.rm = T),2), ')', sep = ''),
+             paste(round(mean(df$opt_weight, na.rm = T),2), ' (', round(sd(df$opt_weight, na.rm = T),2), ')', sep = ''),
+             paste(round(mean(df$Diastolic, na.rm = T),2), ' (', round(sd(df$Diastolic, na.rm = T),2), ')', sep = ''),
+             paste(round(mean(df$Systolic, na.rm = T),2), ' (', round(sd(df$Systolic, na.rm = T),2), ')', sep = ''),
+             round(mean(df$BP_level == 'High', na.rm = T), 2),
+             paste(round(mean(df$Cholesterol, na.rm = T),2), ' (', round(sd(df$Cholesterol, na.rm = T),2), ')', sep = ''),
+             round(mean(df$Chol_Level == 'High', na.rm = T), 2),
+             1-round(mean(df$Smoking_Status == 'Non-smoker'),2))
+return(sum_vec)
+}
+table(heart$DeathType, factor(heart$Chol_Level))
+summary(factor(s_heart$Alive$Chol_Level))
+
+Total <- create_row(heart)
+Alive <- create_row(s_heart$Alive)
+Dead_h  <- create_row(s_heart$Heart_Disease)
+Dead_o  <- create_row(s_heart$Other)
+
+df_tab <- data.frame(Total, Alive, Dead_h, Dead_o)
+colnames(df_tab) <- c('Total' ,'Alive', 'Death (CVD)', 'Death (other)')
+row.names(df_tab) <- c('N', '% Female', 'Mean Age at Start (SD)',
+                       'Mean Height (SD)', 'Mean Weight (SD)',
+                       'Mean % from desired weight (SD)',
+                       'Mean Diastolic (SD)', 'Mean Systolic (SD)',
+                       '% High Blood Pressure',
+                       'Mean Cholesterol (SD)', 
+                       '% High Cholesterol',
+                       '% Smoker')
+library(knitr)
+kable(df_tab)
+
+```
+
+Create draftsman plot of the factors
+```{r}
+my_cols <- c("#00AFBB","#FC4E07", "#E7B800")
+heart_x <- heart[,c(4,5,24,8,9,13,23,25)]
+names(heart_x) <- c('Sex', 'Age at Start', 'Weight Deviation', 'Systolic BP', 'Diastolic BP', 'Total Cholesterol', 'Smoking Status','DeathType')
+#upper panel function
+panel.cor <- function(x, y, digits = 2, cex.cor, ...)
+{
+  usr <- par("usr"); on.exit(par(usr))
+  par(usr = c(0, 1, 0, 1))
+  # correlation coefficient
+  r <- cor(x, y)
+  txt <- format(c(r, 0.123456789), digits = digits)[1]
+  txt <- paste("r= ", txt, sep = "")
+  text(0.5, 0.6, txt)
+  
+  # p-value calculation
+  p <- cor.test(x, y)$p.value
+  txt2 <- format(c(p, 0.123456789), digits = digits)[1]
+  txt2 <- paste("p= ", txt2, sep = "")
+  if(p<0.01) txt2 <- paste("p= ", "<0.01", sep = "")
+  text(0.5, 0.4, txt2)
+}
+
+pairs(heart_x[,2:7], pch = 19, col = my_cols[heart$DeathType], upper.panel = panel.cor, main ="Draftman Plot of Risk Factors")
+par(xpd = TRUE)
+legend("topright", inset=c(-0.1,-0.1), legend=c(levels(heart_x$DeathType)), pch=20, 
+           fill = unique(my_cols),
+           horiz=FALSE, bty='n', cex=0.5)
+
+
+```
+
+
+Fit the models
+
+```{r}
+head(heart)
+library(VGAM)
+
+mm <- data.frame(model.matrix(~ factor(DeathType) + 0, heart))
+h2 <- cbind(heart, mm)
+names(h2)
+cols <- cbind(h2$factor.DeathType.Heart_Disease, h2$factor.DeathType.Other, h2$factor.DeathType.Alive)
+
+## Main effects model
+mod1 <- vglm(cols ~ factor(Sex) + AgeAtStart + opt_weight + factor(BP_level) + factor(Chol_Level) + factor(Smoke_Binary),
+             family = multinomial,
+            data = heart)
+
+summary(mod1)
+## fit null model
+mod.null <- vglm(cols ~ 1, family = multinomial)
+
+## check ok to remove weight with LRT test
+anova(mod2, mod1, test = 'LRT', type = 1)
+### check model with weight and first order interactions
+mod3.0 <- vglm(cols ~ factor(Sex) * AgeAtStart + factor(Sex) * factor(BP_level) + factor(Sex) * factor(Chol_Level) + factor(Sex) * factor(Smoke_Binary) +
+             AgeAtStart * factor(BP_level) + AgeAtStart * factor(Chol_Level) + AgeAtStart * factor(Smoke_Binary) +
+             factor(BP_level) * factor(Chol_Level) + factor(BP_level) * factor(Smoke_Binary) +
+             factor(Chol_Level) * factor(Smoke_Binary) +
+               opt_weight * AgeAtStart + opt_weight * factor(BP_level) + opt_weight * factor(Chol_Level) + opt_weight * factor(Smoke_Binary)
+             ,
+             family = multinomial,
+            data = heart)
+
+summary(mod3.0)
+anova(mod1, mod3.0, test = 'LRT', type = 1)
+
+### interaction model with non-significant interactions removed
+mod4 <- vglm(cols ~ factor(Chol_Level) + factor(Sex) * AgeAtStart + factor(BP_level) + AgeAtStart * factor(Smoke_Binary) + opt_weight,
+             family = multinomial,
+            data = heart)
+
+summary(mod4)
+anova(mod4, mod3.0, test = 'LRT', type = 1)
+anova(mod1, mod4, test = 'LRT', type = 1)
+
+
+### final model 
+mod5 <- vglm(cols ~ factor(Chol_Level) + factor(Sex) * scale(AgeAtStart) + factor(BP_level) + scale(AgeAtStart) * factor(Smoke_Binary),
+             family = multinomial,
+            data = heart)
+
+summod <- summary(mod5)
+coef(mod5)
+
+anova(mod.null, mod5, test = 'LRT', type = 1)
+
+## create plot of coefficients
+bs <- coef(mod5)
+ses <- sqrt(diag(vcov(mod5)))
+ul <- bs + 1.96*ses
+ll <- bs - 1.96*ses
+cbind(ll, ul)
+length(bs)
+
+par(mar=c(10.1,4.1,4.1,2.1))
+plot(1:length(bs),exp(bs), pch=20, ylim=c(0,5), xlim=c(3,16.5),
+     xlab='',
+     ylab='Exp(Coefficient)',
+     xaxt='n',
+     main='Exponentiated Model coefficients with 95% CI',
+     col = 'black',
+     cex = 2)
+
+segments(y1=exp(ul),y0=exp(ll),x0=1:length(bs), lwd = 3, col = 'black')
+abline(h=1, lty=2)
+c_name <- c('Intercept 1', 'Intercept 2',
+            'Chol=Norm:1', 'Chol=Norm:2', 
+            'Sex=M:1', 'Sex=M:2', 
+            'Age:1', 'Age:2',
+            'BP=Norm:1', 'BP=Norm:2', 
+            'Smoke=Y:1', 'Smoke=Y:2',
+            'Sex=M*Age:1', 'Sex=M*Age:2',
+            'Smoke*Age=Y:1', 'Smoke*Age=Y:2')
+axis(1, at = 1:length(bs), labels = c_name, las = 2)
+```
